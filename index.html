@@ -3,32 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旧件核对-iPhone 交互修复版</title>
+    <title>旧件核对-自动提醒版</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --safe-top: env(safe-area-inset-top); }
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 140px 16px; }
         .card { background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 16px; }
-        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; text-align: center; cursor: pointer; border: none; outline: none; }
+        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; text-align: center; cursor: pointer; }
         #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
         
+        /* 列表项样式 */
         .list-item { padding: 15px; border-bottom: 0.5px solid #e5e5ea; color: #8e8e93; }
         .list-item.scanned { background: #fafff9; color: #1c1c1e; border-left: 6px solid var(--ios-green); }
-        .vin-box { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; margin: 4px 0; font-weight: 600; }
-        .scanned .vin-box { background: #e8f5e9; color: #2e7d32; }
+        .vin-box { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; font-weight: 600; }
 
-        #statusLog { font-size: 13px; margin: 10px 0; text-align: center; color: #8e8e93; }
+        /* 自定义自动关闭的弹窗 (Toast) */
+        #toast {
+            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8); color: white; padding: 16px 24px;
+            border-radius: 12px; z-index: 9999; display: none; text-align: center;
+            backdrop-filter: blur(5px); width: 70%; line-height: 1.5;
+        }
+
         .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 20px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
     </style>
 </head>
 <body>
 
+<div id="toast"></div>
+
 <div class="card">
     <h3>📂 1. 加载清单</h3>
     <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" style="display: none;">
     <button class="btn-main" onclick="document.getElementById('excelInput').click()">选取 Excel 文件</button>
-    <div id="statusLog">等待文件上传</div>
+    <div id="statusLog" style="text-align:center; font-size:12px; color:#8e8e93; margin-top:8px;">等待上传</div>
 </div>
 
 <div class="card">
@@ -36,7 +45,7 @@
         <h3>📷 2. 扫码核对</h3>
         <b id="statText" style="color: var(--ios-blue); font-size: 22px;">0 / 0</b>
     </div>
-    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">点击开启扫码反馈</button>
+    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">激活扫码反馈</button>
     <div id="reader"></div>
 </div>
 
@@ -56,63 +65,52 @@
 <script>
     let inventory = [];
     let scanHistory = {};
+    let isProcessing = false; // 逻辑锁
     const html5QrCode = new Html5Qrcode("reader");
     const beep = document.getElementById('beepAudio');
-    const startBtn = document.getElementById('startBtn');
+    const toast = document.getElementById('toast');
 
-    // 处理文件上传
+    // 自动关闭的提示函数
+    function showToast(msg, duration = 2000) {
+        toast.innerText = msg;
+        toast.style.display = 'block';
+        setTimeout(() => {
+            toast.style.display = 'none';
+            isProcessing = false; // 消失后才允许下一次扫描
+        }, duration);
+    }
+
     document.getElementById('excelInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = function(e) {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const ws = workbook.Sheets[workbook.SheetNames[0]];
-                const json = XLSX.utils.sheet_to_json(ws);
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const ws = workbook.Sheets[workbook.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(ws);
+            
+            const bKey = Object.keys(json[0]).find(k => k.includes('旧件条码'));
+            const vKey = Object.keys(json[0]).find(k => k.toUpperCase().includes('VIN'));
+            const nKey = Object.keys(json[0]).find(k => k.includes('旧件名称'));
 
-                if (json.length === 0) throw new Error("Excel 为空");
-
-                // 字段识别
-                const sample = json[0];
-                const findKey = (arr) => Object.keys(sample).find(k => arr.some(s => k.replace(/\s/g,'').toUpperCase().includes(s)));
-                const bKey = findKey(['旧件条码', '条码']);
-                const vKey = findKey(['VIN']);
-                const nKey = findKey(['旧件名称', '名称']);
-
-                inventory = json.map(row => ({
-                    barcode: String(row[bKey] || '').trim(),
-                    vin: String(row[vKey] || '无VIN'),
-                    name: String(row[nKey] || '未知旧件'),
-                    original: row
-                }));
-
-                document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
-                renderList();
-                
-                // 文件加载后，显示激活按钮
-                startBtn.style.display = 'block';
-                startBtn.innerText = "点我：激活扫码提示音及震动";
-            } catch (err) { alert("文件解析错误: " + err.message); }
+            inventory = json.map(row => ({
+                barcode: String(row[bKey] || '').trim(),
+                vin: String(row[vKey] || '无VIN'),
+                name: String(row[nKey] || '未知旧件'),
+                original: row
+            }));
+            document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
+            renderList();
+            document.getElementById('startBtn').style.display = 'block';
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // 激活扫码器及交互权限
-    startBtn.addEventListener('click', function() {
-        // 1. 播放一下声音以解锁 Safari 权限
-        beep.play().then(() => {
-            beep.pause();
-            beep.currentTime = 0;
-        }).catch(e => console.log("音频解锁失败"));
-
-        // 2. 触发短震动解锁权限
+    document.getElementById('startBtn').addEventListener('click', function() {
+        beep.play().then(() => { beep.pause(); beep.currentTime = 0; });
         if (navigator.vibrate) navigator.vibrate(50);
-
-        // 3. 开启扫码
-        startBtn.style.display = 'none';
+        this.style.display = 'none';
         startScanner();
     });
 
@@ -129,69 +127,55 @@
         });
     }
 
-    let isScanning = false;
-
     function startScanner() {
-        const config = { fps: 15, qrbox: { width: 250, height: 150 } };
-        html5QrCode.start({ facingMode: "environment" }, config, (code) => {
-            if(isScanning) return;
+        html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: { width: 250, height: 150 } }, (code) => {
+            if(isProcessing) return; // 锁死识别
+            
             const clean = code.trim();
             const hit = inventory.find(i => i.barcode === clean);
 
             if (!hit) {
-                triggerFeedback('error', `❌ 清单无此条码：\n${clean}`);
+                isProcessing = true;
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                showToast(`❌ 条码匹配失败\n${clean}`, 2000);
                 return;
             }
 
             if (scanHistory[clean]) {
-                triggerFeedback('repeat', `⚠️ 该件重复扫描！\n核对时间: ${scanHistory[clean]}`);
+                isProcessing = true;
+                if (navigator.vibrate) navigator.vibrate(100);
+                showToast(`⚠️ 该件已核对过\n无需重复扫描`, 2000);
                 return;
             }
 
             // 成功逻辑
-            triggerFeedback('success', clean);
-        });
-    }
-
-    function triggerFeedback(type, message) {
-        isScanning = true;
-
-        if (type === 'success') {
-            // 成功反馈：声音 + 短震
+            isProcessing = true; 
             beep.play();
-            if (navigator.vibrate) navigator.vibrate(100);
+            if (navigator.vibrate) navigator.vibrate(80);
             
-            scanHistory[message] = new Date().toLocaleTimeString();
-            const el = document.getElementById(`item-${message}`);
+            scanHistory[clean] = new Date().toLocaleTimeString();
+            const el = document.getElementById(`item-${clean}`);
             if (el) {
                 el.classList.add('scanned');
                 document.getElementById('itemList').prepend(el);
                 document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
             }
-            setTimeout(() => { isScanning = false; }, 800);
-        } else {
-            // 错误反馈：重震 + 弹窗
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             
-            // 强制停止扫码，弹出窗口
-            setTimeout(() => {
-                alert(message);
-                isScanning = false;
-            }, 100);
-        }
+            // 扫码成功后也冷却 1.5 秒，防止 Pro Max 过于灵敏导致连扫
+            setTimeout(() => { isProcessing = false; }, 1500);
+        });
     }
 
     function exportData() {
-        if (!inventory.length) return alert("无数据");
         const out = inventory.map(i => ({
             ...i.original,
-            "核对状态": scanHistory[i.barcode] ? "✅ 已核对" : "未扫描",
+            "核对状态": scanHistory[i.barcode] ? "已核对" : "未扫描",
             "核对时间": scanHistory[i.barcode] || "-"
         }));
         const ws = XLSX.utils.json_to_sheet(out);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "结果");
-        XLSX.writeFile(wb, `核对结果_${new Date().getTime()}.xlsx`);
+        XLSX.writeFile(wb, `核对报表_${new Date().getTime()}.xlsx`);
     }
 </script>
 </body>
