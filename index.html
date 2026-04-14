@@ -3,65 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旧件核对-VIN修复版</title>
+    <title>旧件核对-交互增强版</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --ios-blue: #007aff; --ios-green: #34c759; --safe-top: env(safe-area-inset-top); }
+        :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --safe-top: env(safe-area-inset-top); }
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 140px 16px; }
         .card { background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 16px; }
-        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; display: block; text-align: center; text-decoration: none; }
+        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; display: block; text-align: center; text-decoration: none; cursor: pointer; }
         #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
         
-        .list-item { padding: 15px; border-bottom: 0.5px solid #e5e5ea; color: #8e8e93; }
-        .list-item.scanned { background: #fafff9; color: #1c1c1e; border-left: 5px solid var(--ios-green); }
+        .list-item { padding: 15px; border-bottom: 0.5px solid #e5e5ea; color: #8e8e93; transition: 0.3s; }
+        .list-item.scanned { background: #fafff9; color: #1c1c1e; border-left: 6px solid var(--ios-green); }
         
-        .info-main { font-weight:bold; font-size:16px; margin-bottom: 4px; }
-        .info-sub { font-size:13px; line-height: 1.5; }
-        .vin-text { color: #555; font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 4px; }
+        .info-main { font-weight:bold; font-size:16px; margin-bottom: 4px; display: block; }
+        .vin-box { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; margin: 4px 0; font-weight: 600; font-size: 13px; }
+        .scanned .vin-box { background: #e8f5e9; color: #2e7d32; }
+
+        #statusLog { font-size: 13px; margin: 10px 0; text-align: center; color: #8e8e93; }
+        .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 20px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
         
-        #statusLog { font-size: 13px; margin-top: 10px; text-align: center; min-height: 1.2em; }
-        .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 20px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; }
+        /* 简单动画 */
+        @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .scanning-active { border: 2px solid var(--ios-blue); animation: flash 1s infinite; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3>📂 1. 上传清单</h3>
+    <h3>📂 1. 加载 Excel 清单</h3>
     <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" style="display: none;">
     <div class="btn-main" onclick="document.getElementById('excelInput').click()">选取文件 (.xlsx)</div>
-    <div id="statusLog" style="color: #8e8e93;">等待上传文件...</div>
+    <div id="statusLog">等待上传清单</div>
 </div>
 
 <div class="card">
     <div style="display:flex; justify-content: space-between; align-items: center;">
         <h3>📷 2. 扫码核对</h3>
-        <b id="statText" style="color: var(--ios-blue); font-size: 18px;">0 / 0</b>
+        <b id="statText" style="color: var(--ios-blue); font-size: 22px;">0 / 0</b>
     </div>
     <div id="reader"></div>
 </div>
 
-<div class="card">
-    <h3>📋 3. 核对明细</h3>
-    <div id="itemList"><p style="text-align: center; color: #8e8e93; padding: 20px;">请先上传 Excel 清单</p></div>
+<div class="card" style="padding: 0;">
+    <div style="padding: 18px 18px 0 18px;"><h3>📋 3. 核对明细</h3></div>
+    <div id="itemList"><p style="text-align: center; color: #ccc; padding: 30px;">无数据</p></div>
 </div>
 
 <div class="footer">
-    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对结果</button>
+    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对报表</button>
 </div>
 
 <script>
     let inventory = [];
-    let scanResults = {};
+    let scanHistory = {};
     const html5QrCode = new Html5Qrcode("reader");
+
+    // 音频反馈：Base64 编码的清脆“滴”声
+    const successAudio = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTdvT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19");
 
     document.getElementById('excelInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-        
-        const log = document.getElementById('statusLog');
-        log.innerText = "正在解析文件...";
-        log.style.color = "#007aff";
+        document.getElementById('statusLog').innerText = "解析中...";
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -71,40 +75,29 @@
                 const ws = workbook.Sheets[workbook.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json(ws);
 
-                if (json.length === 0) throw new Error("Excel 是空的");
+                if (json.length === 0) throw new Error("Excel 似乎是空的");
 
-                // 核心：智能寻找列名
-                const firstRow = json[0];
-                const findKey = (possibleNames) => {
-                    return Object.keys(firstRow).find(k => 
-                        possibleNames.includes(k.trim().toUpperCase())
-                    );
-                };
+                const sample = json[0];
+                const findKey = (arr) => Object.keys(sample).find(k => arr.some(s => k.replace(/\s/g,'').toUpperCase().includes(s)));
 
                 const barcodeKey = findKey(['旧件条码', '条码', 'BARCODE']);
-                const vinKey = findKey(['VIN', 'VIN码', '车架号']);
-                const nameKey = findKey(['旧件名称', '名称', '零件名称']);
+                const vinKey = findKey(['VIN', '车架号']);
+                const nameKey = findKey(['旧件名称', '名称', '零件']);
 
-                if (!barcodeKey) {
-                    throw new Error("找不到【旧件条码】列，请检查表头");
-                }
+                if (!barcodeKey) throw new Error("找不到【旧件条码】列");
 
-                // 统一数据格式
-                inventory = json.map(item => ({
-                    barcode: String(item[barcodeKey] || '').trim(),
-                    vin: String(item[vinKey] || '无VIN'),
-                    name: String(item[nameKey] || '未知旧件'),
-                    raw: item
+                inventory = json.map(row => ({
+                    barcode: String(row[barcodeKey] || '').trim(),
+                    vin: String(row[vinKey] || '无VIN'),
+                    name: String(row[nameKey] || '未知旧件'),
+                    original: row
                 }));
 
-                log.innerText = `✅ 成功加载 ${inventory.length} 条数据`;
-                log.style.color = "#34c759";
-                
+                document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
                 renderList();
                 startScanner();
             } catch (err) {
-                log.innerText = "❌ " + err.message;
-                log.style.color = "#ff3b30";
+                alert("文件读取失败: " + err.message);
             }
         };
         reader.readAsArrayBuffer(file);
@@ -114,49 +107,80 @@
         const listDiv = document.getElementById('itemList');
         listDiv.innerHTML = '';
         document.getElementById('statText').innerText = `0 / ${inventory.length}`;
-
         inventory.forEach(item => {
             const div = document.createElement('div');
             div.className = 'list-item';
             div.id = `item-${item.barcode}`;
-            div.innerHTML = `
-                <div class="info-main">${item.name}</div>
-                <div class="info-sub">
-                    <div>VIN: <span class="vin-text">${item.vin}</span></div>
-                    <div style="font-size:11px; opacity:0.7;">条码: ${item.barcode}</div>
-                </div>
-            `;
+            div.innerHTML = `<span class="info-main">${item.name}</span><div class="info-sub"><div class="vin-box">VIN: ${item.vin}</div><div style="font-size:11px; opacity:0.6;">条码: ${item.barcode}</div></div>`;
             listDiv.appendChild(div);
         });
     }
 
+    let isProcessing = false; // 防止扫码过于灵敏导致的重复弹窗
+
     function startScanner() {
-        html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, (code) => {
-            const cleanCode = code.trim();
-            const found = inventory.find(i => i.barcode === cleanCode);
+        const config = { fps: 20, qrbox: { width: 260, height: 160 } };
+        html5QrCode.start({ facingMode: "environment" }, config, (code) => {
+            if(isProcessing) return;
+            const clean = code.trim();
             
-            if (found && !scanResults[cleanCode]) {
-                if (navigator.vibrate) navigator.vibrate(100);
-                scanResults[cleanCode] = new Date().toLocaleString();
-                
-                const el = document.getElementById(`item-${cleanCode}`);
-                if (el) {
-                    el.classList.add('scanned');
-                    document.getElementById('itemList').prepend(el);
-                    document.getElementById('statText').innerText = `${Object.keys(scanResults).length} / ${inventory.length}`;
-                }
+            // 1. 检查是否存在
+            const hit = inventory.find(i => i.barcode === clean);
+            
+            if (!hit) {
+                errorFeedback(`❌ 条码错误\n清单中不存在：${clean}`);
+                return;
             }
-        }).catch(err => console.error(err));
+
+            // 2. 检查是否重复
+            if (scanHistory[clean]) {
+                errorFeedback(`⚠️ 重复扫描\n该件已在 ${scanHistory[clean]} 核对过`);
+                return;
+            }
+
+            // 3. 正常核对成功
+            successFeedback(clean);
+
+        }).catch(e => console.error(e));
+    }
+
+    function successFeedback(barcode) {
+        isProcessing = true;
+        // 声音 & 震动
+        successAudio.play();
+        if (navigator.vibrate) navigator.vibrate(100);
+
+        scanHistory[barcode] = new Date().toLocaleTimeString();
+        
+        const el = document.getElementById(`item-${barcode}`);
+        if (el) {
+            el.classList.add('scanned');
+            document.getElementById('itemList').prepend(el);
+            document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
+        }
+        
+        // 短暂延迟后允许下一次扫描，提升连扫体验
+        setTimeout(() => { isProcessing = false; }, 1000);
+    }
+
+    function errorFeedback(msg) {
+        isProcessing = true;
+        // 报错震动：两次短震
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        
+        alert(msg); // 弹出提示
+        
+        setTimeout(() => { isProcessing = false; }, 500);
     }
 
     function exportData() {
-        if (inventory.length === 0) return alert("请先上传清单");
-        const exportRows = inventory.map(item => ({
-            ...item.raw,
-            "核对状态": scanResults[item.barcode] ? "已核对" : "未扫描",
-            "核对时间": scanResults[item.barcode] || "-"
+        if (!inventory.length) return alert("无数据");
+        const out = inventory.map(i => ({
+            ...i.original,
+            "核对状态": scanHistory[i.barcode] ? "✅ 已核对" : "❌ 未扫描",
+            "核对时间": scanHistory[i.barcode] || "-"
         }));
-        const ws = XLSX.utils.json_to_sheet(exportRows);
+        const ws = XLSX.utils.json_to_sheet(out);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "结果");
         XLSX.writeFile(wb, `核对结果_${new Date().getTime()}.xlsx`);
