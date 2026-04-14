@@ -3,39 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旧件核对系统-增强版</title>
+    <title>旧件核对-筛选统计版</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --safe-top: env(safe-area-inset-top); }
+        :root { --ios-blue: #007aff; --ios-green: #34c759; --safe-top: env(safe-area-inset-top); }
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 160px 16px; }
         .card { background: #fff; border-radius: 16px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 12px; }
         .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 14px; border-radius: 12px; width: 100%; font-size: 16px; font-weight: 600; cursor: pointer; }
         
-        /* 筛选框样式 */
         .filter-input {
-            width: 100%; border: 1px solid #d1d1d6; border-radius: 10px; padding: 10px 12px;
-            font-size: 14px; box-sizing: border-box; margin-top: 10px; background: #f9f9f9;
+            width: 100%; border: 1px solid #d1d1d6; border-radius: 10px; padding: 12px;
+            font-size: 15px; box-sizing: border-box; margin-top: 10px; background: #fff;
+        }
+
+        /* 筛选结果统计条 */
+        .filter-stats {
+            background: #e5f1ff; color: var(--ios-blue); padding: 8px 12px;
+            border-radius: 8px; margin-top: 10px; font-size: 13px; font-weight: 600;
+            display: flex; justify-content: space-between;
         }
 
         #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
         
-        /* 列表项增强 */
         .list-item { padding: 12px; border-bottom: 0.5px solid #eee; display: flex; flex-direction: column; gap: 4px; }
         .list-item.scanned { background: #fafff9; border-left: 6px solid var(--ios-green); }
         .item-title { font-size: 16px; font-weight: bold; color: #1c1c1e; }
         .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #f0f0f2; color: #666; font-weight: 500; }
-        .tag-brand { background: #e5f1ff; color: var(--ios-blue); }
-        .tag-vin { background: #f0f0f0; font-family: monospace; color: #333; }
+        .tag-vin { background: #333; color: #fff; font-family: monospace; }
         .tag-qty { background: #fff3cd; color: #856404; }
 
-        /* Toast 提示 */
         #toast {
             position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.85); color: white; padding: 16px 24px;
             border-radius: 12px; z-index: 9999; display: none; text-align: center;
-            backdrop-filter: blur(8px); width: 70%; line-height: 1.5; font-size: 15px;
+            backdrop-filter: blur(8px); width: 70%; line-height: 1.5;
         }
 
         .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 16px 20px calc(var(--safe-bottom) + 16px); background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
@@ -57,22 +60,26 @@
         <h3>📷 2. 扫码核对</h3>
         <b id="statText" style="color: var(--ios-blue); font-size: 20px;">0 / 0</b>
     </div>
-    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">激活反馈并开启扫码</button>
+    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">开启扫码并激活反馈</button>
     <div id="reader"></div>
 </div>
 
 <div class="card" style="padding: 10px 0;">
     <div style="padding: 0 15px;">
         <h3>📋 3. 核对明细</h3>
-        <input type="text" id="filterInput" class="filter-input" placeholder="🔍 搜索 VIN、车型或旧件号...">
+        <input type="text" id="filterInput" class="filter-input" placeholder="🔍 输入 VIN、车型或旧件号筛选...">
+        <div id="filterStatsBar" class="filter-stats" style="display:none;">
+            <span>当前筛选结果</span>
+            <span id="filterCountDisplay">已核对 0 / 共 0 件</span>
+        </div>
     </div>
-    <div id="itemList" style="margin-top: 10px; max-height: 400px; overflow-y: auto;">
+    <div id="itemList" style="margin-top: 10px; max-height: 500px; overflow-y: auto;">
         <p style="text-align: center; color: #ccc; padding: 30px;">等待上传文件...</p>
     </div>
 </div>
 
 <div class="footer">
-    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对结果报表</button>
+    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对报表</button>
 </div>
 
 <audio id="beepAudio" preload="auto">
@@ -92,7 +99,6 @@
         setTimeout(() => { t.style.display = 'none'; isProcessing = false; }, duration);
     }
 
-    // 监听搜索输入
     document.getElementById('filterInput').addEventListener('input', function(e) {
         renderList(e.target.value.toUpperCase());
     });
@@ -108,7 +114,6 @@
                 const ws = workbook.Sheets[workbook.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json(ws);
                 
-                // 自动列匹配
                 const findK = (keys) => Object.keys(json[0]).find(k => keys.some(s => k.toUpperCase().includes(s)));
                 
                 inventory = json.map(row => ({
@@ -122,10 +127,11 @@
                     original: row
                 }));
 
-                document.getElementById('statusLog').innerText = `✅ 成功加载 ${inventory.length} 条数据`;
+                document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
+                document.getElementById('filterStatsBar').style.display = 'flex';
                 renderList();
                 document.getElementById('startBtn').style.display = 'block';
-            } catch (err) { alert("文件解析失败，请检查格式"); }
+            } catch (err) { alert("解析失败"); }
         };
         reader.readAsArrayBuffer(file);
     });
@@ -147,25 +153,26 @@
             i.partNo.toUpperCase().includes(filter)
         );
 
+        // 更新筛选后的总数和已核对数
+        const filteredScanned = filtered.filter(i => scanHistory[i.barcode]).length;
+        document.getElementById('filterCountDisplay').innerText = `已核对 ${filteredScanned} / 共 ${filtered.length} 件`;
         document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
 
         filtered.forEach(item => {
             const isScanned = !!scanHistory[item.barcode];
             const div = document.createElement('div');
             div.className = `list-item ${isScanned ? 'scanned' : ''}`;
-            div.id = `item-${item.barcode}`;
             div.innerHTML = `
                 <div class="item-title">${item.name}</div>
                 <div class="tag-row">
-                    <span class="tag tag-brand">${item.brand}</span>
-                    <span class="tag">型:${item.model}</span>
+                    <span class="tag" style="background:#e5f1ff; color:#007aff;">${item.brand}</span>
+                    <span class="tag">${item.model}</span>
                     <span class="tag tag-qty">数量:${item.qty}</span>
                 </div>
                 <div class="tag-row">
                     <span class="tag tag-vin">VIN:${item.vin}</span>
-                    <span class="tag">编号:${item.partNo}</span>
                 </div>
-                <div style="font-size:10px; color:#bbb; margin-top:2px;">条码:${item.barcode}</div>
+                <div style="font-size:10px; color:#bbb; margin-top:2px;">编号:${item.partNo} | 条码:${item.barcode}</div>
             `;
             if (isScanned) listDiv.prepend(div); else listDiv.appendChild(div);
         });
@@ -180,22 +187,23 @@
             if (!hit) {
                 isProcessing = true;
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                showToast(`❌ 清单中无此条码\n${clean}`, 2500);
+                showToast(`❌ 清单无此条码\n${clean}`, 2500);
                 return;
             }
 
             if (scanHistory[clean]) {
                 isProcessing = true;
                 if (navigator.vibrate) navigator.vibrate(100);
-                showToast(`⚠️ 该零件已核对过\n无需重复扫描`, 2000);
+                showToast(`⚠️ 该零件已核对过`, 2000);
                 return;
             }
 
-            // 成功
             isProcessing = true;
             beep.play();
             if (navigator.vibrate) navigator.vibrate(80);
             scanHistory[clean] = new Date().toLocaleTimeString();
+            
+            // 扫描成功后刷新列表（保持当前的筛选状态）
             renderList(document.getElementById('filterInput').value.toUpperCase());
             setTimeout(() => { isProcessing = false; }, 1200);
         });
@@ -210,7 +218,7 @@
         const ws = XLSX.utils.json_to_sheet(out);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "结果");
-        XLSX.writeFile(wb, `旧件核对报表_${new Date().getTime()}.xlsx`);
+        XLSX.writeFile(wb, `旧件报表_${new Date().getTime()}.xlsx`);
     }
 </script>
 </body>
