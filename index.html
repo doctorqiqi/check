@@ -3,30 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旧件核对-自动提醒版</title>
+    <title>旧件核对系统-增强版</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --safe-top: env(safe-area-inset-top); }
-        body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 140px 16px; }
-        .card { background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 16px; }
-        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; text-align: center; cursor: pointer; }
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
+        body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 160px 16px; }
+        .card { background: #fff; border-radius: 16px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 12px; }
+        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 14px; border-radius: 12px; width: 100%; font-size: 16px; font-weight: 600; cursor: pointer; }
         
-        /* 列表项样式 */
-        .list-item { padding: 15px; border-bottom: 0.5px solid #e5e5ea; color: #8e8e93; }
-        .list-item.scanned { background: #fafff9; color: #1c1c1e; border-left: 6px solid var(--ios-green); }
-        .vin-box { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; font-weight: 600; }
-
-        /* 自定义自动关闭的弹窗 (Toast) */
-        #toast {
-            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8); color: white; padding: 16px 24px;
-            border-radius: 12px; z-index: 9999; display: none; text-align: center;
-            backdrop-filter: blur(5px); width: 70%; line-height: 1.5;
+        /* 筛选框样式 */
+        .filter-input {
+            width: 100%; border: 1px solid #d1d1d6; border-radius: 10px; padding: 10px 12px;
+            font-size: 14px; box-sizing: border-box; margin-top: 10px; background: #f9f9f9;
         }
 
-        .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 20px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
+        
+        /* 列表项增强 */
+        .list-item { padding: 12px; border-bottom: 0.5px solid #eee; display: flex; flex-direction: column; gap: 4px; }
+        .list-item.scanned { background: #fafff9; border-left: 6px solid var(--ios-green); }
+        .item-title { font-size: 16px; font-weight: bold; color: #1c1c1e; }
+        .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+        .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #f0f0f2; color: #666; font-weight: 500; }
+        .tag-brand { background: #e5f1ff; color: var(--ios-blue); }
+        .tag-vin { background: #f0f0f0; font-family: monospace; color: #333; }
+        .tag-qty { background: #fff3cd; color: #856404; }
+
+        /* Toast 提示 */
+        #toast {
+            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85); color: white; padding: 16px 24px;
+            border-radius: 12px; z-index: 9999; display: none; text-align: center;
+            backdrop-filter: blur(8px); width: 70%; line-height: 1.5; font-size: 15px;
+        }
+
+        .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 16px 20px calc(var(--safe-bottom) + 16px); background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
     </style>
 </head>
 <body>
@@ -34,28 +46,33 @@
 <div id="toast"></div>
 
 <div class="card">
-    <h3>📂 1. 加载清单</h3>
+    <h3>📂 1. 清单导入</h3>
     <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" style="display: none;">
-    <button class="btn-main" onclick="document.getElementById('excelInput').click()">选取 Excel 文件</button>
-    <div id="statusLog" style="text-align:center; font-size:12px; color:#8e8e93; margin-top:8px;">等待上传</div>
+    <button class="btn-main" onclick="document.getElementById('excelInput').click()">选择清单文件</button>
+    <div id="statusLog" style="text-align:center; font-size:12px; color:#8e8e93; margin-top:8px;">未加载数据</div>
 </div>
 
 <div class="card">
     <div style="display:flex; justify-content: space-between; align-items: center;">
         <h3>📷 2. 扫码核对</h3>
-        <b id="statText" style="color: var(--ios-blue); font-size: 22px;">0 / 0</b>
+        <b id="statText" style="color: var(--ios-blue); font-size: 20px;">0 / 0</b>
     </div>
-    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">激活扫码反馈</button>
+    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">激活反馈并开启扫码</button>
     <div id="reader"></div>
 </div>
 
-<div class="card" style="padding: 0;">
-    <div style="padding: 18px 18px 0 18px;"><h3>📋 3. 核对明细</h3></div>
-    <div id="itemList"><p style="text-align: center; color: #ccc; padding: 30px;">无数据</p></div>
+<div class="card" style="padding: 10px 0;">
+    <div style="padding: 0 15px;">
+        <h3>📋 3. 核对明细</h3>
+        <input type="text" id="filterInput" class="filter-input" placeholder="🔍 搜索 VIN、车型或旧件号...">
+    </div>
+    <div id="itemList" style="margin-top: 10px; max-height: 400px; overflow-y: auto;">
+        <p style="text-align: center; color: #ccc; padding: 30px;">等待上传文件...</p>
+    </div>
 </div>
 
 <div class="footer">
-    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对报表</button>
+    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对结果报表</button>
 </div>
 
 <audio id="beepAudio" preload="auto">
@@ -65,44 +82,50 @@
 <script>
     let inventory = [];
     let scanHistory = {};
-    let isProcessing = false; // 逻辑锁
+    let isProcessing = false;
     const html5QrCode = new Html5Qrcode("reader");
     const beep = document.getElementById('beepAudio');
-    const toast = document.getElementById('toast');
 
-    // 自动关闭的提示函数
     function showToast(msg, duration = 2000) {
-        toast.innerText = msg;
-        toast.style.display = 'block';
-        setTimeout(() => {
-            toast.style.display = 'none';
-            isProcessing = false; // 消失后才允许下一次扫描
-        }, duration);
+        const t = document.getElementById('toast');
+        t.innerText = msg; t.style.display = 'block';
+        setTimeout(() => { t.style.display = 'none'; isProcessing = false; }, duration);
     }
+
+    // 监听搜索输入
+    document.getElementById('filterInput').addEventListener('input', function(e) {
+        renderList(e.target.value.toUpperCase());
+    });
 
     document.getElementById('excelInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = function(e) {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const ws = workbook.Sheets[workbook.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(ws);
-            
-            const bKey = Object.keys(json[0]).find(k => k.includes('旧件条码'));
-            const vKey = Object.keys(json[0]).find(k => k.toUpperCase().includes('VIN'));
-            const nKey = Object.keys(json[0]).find(k => k.includes('旧件名称'));
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const ws = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(ws);
+                
+                // 自动列匹配
+                const findK = (keys) => Object.keys(json[0]).find(k => keys.some(s => k.toUpperCase().includes(s)));
+                
+                inventory = json.map(row => ({
+                    barcode: String(row[findK(['旧件条码', '条码'])] || '').trim(),
+                    vin: String(row[findK(['VIN', '车架号'])] || '').trim(),
+                    name: String(row[findK(['旧件名称', '名称'])] || '未知'),
+                    brand: String(row[findK(['品牌'])] || '-'),
+                    partNo: String(row[findK(['旧件编号', '零件号'])] || '-'),
+                    qty: row[findK(['数量'])] || 1,
+                    model: String(row[findK(['车型', '车系'])] || '-'),
+                    original: row
+                }));
 
-            inventory = json.map(row => ({
-                barcode: String(row[bKey] || '').trim(),
-                vin: String(row[vKey] || '无VIN'),
-                name: String(row[nKey] || '未知旧件'),
-                original: row
-            }));
-            document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
-            renderList();
-            document.getElementById('startBtn').style.display = 'block';
+                document.getElementById('statusLog').innerText = `✅ 成功加载 ${inventory.length} 条数据`;
+                renderList();
+                document.getElementById('startBtn').style.display = 'block';
+            } catch (err) { alert("文件解析失败，请检查格式"); }
         };
         reader.readAsArrayBuffer(file);
     });
@@ -114,55 +137,67 @@
         startScanner();
     });
 
-    function renderList() {
+    function renderList(filter = '') {
         const listDiv = document.getElementById('itemList');
         listDiv.innerHTML = '';
-        document.getElementById('statText').innerText = `0 / ${inventory.length}`;
-        inventory.forEach(item => {
+        
+        const filtered = inventory.filter(i => 
+            i.vin.includes(filter) || 
+            i.model.toUpperCase().includes(filter) || 
+            i.partNo.toUpperCase().includes(filter)
+        );
+
+        document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
+
+        filtered.forEach(item => {
+            const isScanned = !!scanHistory[item.barcode];
             const div = document.createElement('div');
-            div.className = 'list-item';
+            div.className = `list-item ${isScanned ? 'scanned' : ''}`;
             div.id = `item-${item.barcode}`;
-            div.innerHTML = `<span style="font-weight:600;">${item.name}</span><br><div class="vin-box">VIN: ${item.vin}</div><div style="font-size:11px; opacity:0.5;">条码: ${item.barcode}</div>`;
-            listDiv.appendChild(div);
+            div.innerHTML = `
+                <div class="item-title">${item.name}</div>
+                <div class="tag-row">
+                    <span class="tag tag-brand">${item.brand}</span>
+                    <span class="tag">型:${item.model}</span>
+                    <span class="tag tag-qty">数量:${item.qty}</span>
+                </div>
+                <div class="tag-row">
+                    <span class="tag tag-vin">VIN:${item.vin}</span>
+                    <span class="tag">编号:${item.partNo}</span>
+                </div>
+                <div style="font-size:10px; color:#bbb; margin-top:2px;">条码:${item.barcode}</div>
+            `;
+            if (isScanned) listDiv.prepend(div); else listDiv.appendChild(div);
         });
     }
 
     function startScanner() {
         html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: { width: 250, height: 150 } }, (code) => {
-            if(isProcessing) return; // 锁死识别
-            
+            if(isProcessing) return;
             const clean = code.trim();
             const hit = inventory.find(i => i.barcode === clean);
 
             if (!hit) {
                 isProcessing = true;
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                showToast(`❌ 条码匹配失败\n${clean}`, 2000);
+                showToast(`❌ 清单中无此条码\n${clean}`, 2500);
                 return;
             }
 
             if (scanHistory[clean]) {
                 isProcessing = true;
                 if (navigator.vibrate) navigator.vibrate(100);
-                showToast(`⚠️ 该件已核对过\n无需重复扫描`, 2000);
+                showToast(`⚠️ 该零件已核对过\n无需重复扫描`, 2000);
                 return;
             }
 
-            // 成功逻辑
-            isProcessing = true; 
+            // 成功
+            isProcessing = true;
             beep.play();
             if (navigator.vibrate) navigator.vibrate(80);
-            
             scanHistory[clean] = new Date().toLocaleTimeString();
-            const el = document.getElementById(`item-${clean}`);
-            if (el) {
-                el.classList.add('scanned');
-                document.getElementById('itemList').prepend(el);
-                document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
-            }
-            
-            // 扫码成功后也冷却 1.5 秒，防止 Pro Max 过于灵敏导致连扫
-            setTimeout(() => { isProcessing = false; }, 1500);
+            renderList(document.getElementById('filterInput').value.toUpperCase());
+            setTimeout(() => { isProcessing = false; }, 1200);
         });
     }
 
@@ -175,7 +210,7 @@
         const ws = XLSX.utils.json_to_sheet(out);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "结果");
-        XLSX.writeFile(wb, `核对报表_${new Date().getTime()}.xlsx`);
+        XLSX.writeFile(wb, `旧件核对报表_${new Date().getTime()}.xlsx`);
     }
 </script>
 </body>
