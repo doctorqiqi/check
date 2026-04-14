@@ -3,38 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旧件核对-交互增强版</title>
+    <title>旧件核对-iPhone 交互修复版</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --safe-top: env(safe-area-inset-top); }
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 140px 16px; }
         .card { background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 16px; }
-        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; display: block; text-align: center; text-decoration: none; cursor: pointer; }
+        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 16px; border-radius: 12px; width: 100%; font-size: 17px; font-weight: 600; text-align: center; cursor: pointer; border: none; outline: none; }
         #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
         
-        .list-item { padding: 15px; border-bottom: 0.5px solid #e5e5ea; color: #8e8e93; transition: 0.3s; }
+        .list-item { padding: 15px; border-bottom: 0.5px solid #e5e5ea; color: #8e8e93; }
         .list-item.scanned { background: #fafff9; color: #1c1c1e; border-left: 6px solid var(--ios-green); }
-        
-        .info-main { font-weight:bold; font-size:16px; margin-bottom: 4px; display: block; }
-        .vin-box { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; margin: 4px 0; font-weight: 600; font-size: 13px; }
+        .vin-box { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; margin: 4px 0; font-weight: 600; }
         .scanned .vin-box { background: #e8f5e9; color: #2e7d32; }
 
         #statusLog { font-size: 13px; margin: 10px 0; text-align: center; color: #8e8e93; }
         .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 20px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
-        
-        /* 简单动画 */
-        @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        .scanning-active { border: 2px solid var(--ios-blue); animation: flash 1s infinite; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3>📂 1. 加载 Excel 清单</h3>
+    <h3>📂 1. 加载清单</h3>
     <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" style="display: none;">
-    <div class="btn-main" onclick="document.getElementById('excelInput').click()">选取文件 (.xlsx)</div>
-    <div id="statusLog">等待上传清单</div>
+    <button class="btn-main" onclick="document.getElementById('excelInput').click()">选取 Excel 文件</button>
+    <div id="statusLog">等待文件上传</div>
 </div>
 
 <div class="card">
@@ -42,6 +36,7 @@
         <h3>📷 2. 扫码核对</h3>
         <b id="statText" style="color: var(--ios-blue); font-size: 22px;">0 / 0</b>
     </div>
+    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">点击开启扫码反馈</button>
     <div id="reader"></div>
 </div>
 
@@ -54,18 +49,21 @@
     <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对报表</button>
 </div>
 
+<audio id="beepAudio" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" type="audio/mpeg">
+</audio>
+
 <script>
     let inventory = [];
     let scanHistory = {};
     const html5QrCode = new Html5Qrcode("reader");
+    const beep = document.getElementById('beepAudio');
+    const startBtn = document.getElementById('startBtn');
 
-    // 音频反馈：Base64 编码的清脆“滴”声
-    const successAudio = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTdvT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19vT19");
-
+    // 处理文件上传
     document.getElementById('excelInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-        document.getElementById('statusLog').innerText = "解析中...";
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -75,32 +73,47 @@
                 const ws = workbook.Sheets[workbook.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json(ws);
 
-                if (json.length === 0) throw new Error("Excel 似乎是空的");
+                if (json.length === 0) throw new Error("Excel 为空");
 
+                // 字段识别
                 const sample = json[0];
                 const findKey = (arr) => Object.keys(sample).find(k => arr.some(s => k.replace(/\s/g,'').toUpperCase().includes(s)));
-
-                const barcodeKey = findKey(['旧件条码', '条码', 'BARCODE']);
-                const vinKey = findKey(['VIN', '车架号']);
-                const nameKey = findKey(['旧件名称', '名称', '零件']);
-
-                if (!barcodeKey) throw new Error("找不到【旧件条码】列");
+                const bKey = findKey(['旧件条码', '条码']);
+                const vKey = findKey(['VIN']);
+                const nKey = findKey(['旧件名称', '名称']);
 
                 inventory = json.map(row => ({
-                    barcode: String(row[barcodeKey] || '').trim(),
-                    vin: String(row[vinKey] || '无VIN'),
-                    name: String(row[nameKey] || '未知旧件'),
+                    barcode: String(row[bKey] || '').trim(),
+                    vin: String(row[vKey] || '无VIN'),
+                    name: String(row[nKey] || '未知旧件'),
                     original: row
                 }));
 
                 document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
                 renderList();
-                startScanner();
-            } catch (err) {
-                alert("文件读取失败: " + err.message);
-            }
+                
+                // 文件加载后，显示激活按钮
+                startBtn.style.display = 'block';
+                startBtn.innerText = "点我：激活扫码提示音及震动";
+            } catch (err) { alert("文件解析错误: " + err.message); }
         };
         reader.readAsArrayBuffer(file);
+    });
+
+    // 激活扫码器及交互权限
+    startBtn.addEventListener('click', function() {
+        // 1. 播放一下声音以解锁 Safari 权限
+        beep.play().then(() => {
+            beep.pause();
+            beep.currentTime = 0;
+        }).catch(e => console.log("音频解锁失败"));
+
+        // 2. 触发短震动解锁权限
+        if (navigator.vibrate) navigator.vibrate(50);
+
+        // 3. 开启扫码
+        startBtn.style.display = 'none';
+        startScanner();
     });
 
     function renderList() {
@@ -111,73 +124,68 @@
             const div = document.createElement('div');
             div.className = 'list-item';
             div.id = `item-${item.barcode}`;
-            div.innerHTML = `<span class="info-main">${item.name}</span><div class="info-sub"><div class="vin-box">VIN: ${item.vin}</div><div style="font-size:11px; opacity:0.6;">条码: ${item.barcode}</div></div>`;
+            div.innerHTML = `<span style="font-weight:600;">${item.name}</span><br><div class="vin-box">VIN: ${item.vin}</div><div style="font-size:11px; opacity:0.5;">条码: ${item.barcode}</div>`;
             listDiv.appendChild(div);
         });
     }
 
-    let isProcessing = false; // 防止扫码过于灵敏导致的重复弹窗
+    let isScanning = false;
 
     function startScanner() {
-        const config = { fps: 20, qrbox: { width: 260, height: 160 } };
+        const config = { fps: 15, qrbox: { width: 250, height: 150 } };
         html5QrCode.start({ facingMode: "environment" }, config, (code) => {
-            if(isProcessing) return;
+            if(isScanning) return;
             const clean = code.trim();
-            
-            // 1. 检查是否存在
             const hit = inventory.find(i => i.barcode === clean);
-            
+
             if (!hit) {
-                errorFeedback(`❌ 条码错误\n清单中不存在：${clean}`);
+                triggerFeedback('error', `❌ 清单无此条码：\n${clean}`);
                 return;
             }
 
-            // 2. 检查是否重复
             if (scanHistory[clean]) {
-                errorFeedback(`⚠️ 重复扫描\n该件已在 ${scanHistory[clean]} 核对过`);
+                triggerFeedback('repeat', `⚠️ 该件重复扫描！\n核对时间: ${scanHistory[clean]}`);
                 return;
             }
 
-            // 3. 正常核对成功
-            successFeedback(clean);
-
-        }).catch(e => console.error(e));
+            // 成功逻辑
+            triggerFeedback('success', clean);
+        });
     }
 
-    function successFeedback(barcode) {
-        isProcessing = true;
-        // 声音 & 震动
-        successAudio.play();
-        if (navigator.vibrate) navigator.vibrate(100);
+    function triggerFeedback(type, message) {
+        isScanning = true;
 
-        scanHistory[barcode] = new Date().toLocaleTimeString();
-        
-        const el = document.getElementById(`item-${barcode}`);
-        if (el) {
-            el.classList.add('scanned');
-            document.getElementById('itemList').prepend(el);
-            document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
+        if (type === 'success') {
+            // 成功反馈：声音 + 短震
+            beep.play();
+            if (navigator.vibrate) navigator.vibrate(100);
+            
+            scanHistory[message] = new Date().toLocaleTimeString();
+            const el = document.getElementById(`item-${message}`);
+            if (el) {
+                el.classList.add('scanned');
+                document.getElementById('itemList').prepend(el);
+                document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
+            }
+            setTimeout(() => { isScanning = false; }, 800);
+        } else {
+            // 错误反馈：重震 + 弹窗
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            
+            // 强制停止扫码，弹出窗口
+            setTimeout(() => {
+                alert(message);
+                isScanning = false;
+            }, 100);
         }
-        
-        // 短暂延迟后允许下一次扫描，提升连扫体验
-        setTimeout(() => { isProcessing = false; }, 1000);
-    }
-
-    function errorFeedback(msg) {
-        isProcessing = true;
-        // 报错震动：两次短震
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-        
-        alert(msg); // 弹出提示
-        
-        setTimeout(() => { isProcessing = false; }, 500);
     }
 
     function exportData() {
         if (!inventory.length) return alert("无数据");
         const out = inventory.map(i => ({
             ...i.original,
-            "核对状态": scanHistory[i.barcode] ? "✅ 已核对" : "❌ 未扫描",
+            "核对状态": scanHistory[i.barcode] ? "✅ 已核对" : "未扫描",
             "核对时间": scanHistory[i.barcode] || "-"
         }));
         const ws = XLSX.utils.json_to_sheet(out);
