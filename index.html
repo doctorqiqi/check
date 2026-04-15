@@ -3,28 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旧件核对-筛选统计版</title>
+    <title>旧件核对-相机智控版</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --ios-blue: #007aff; --ios-green: #34c759; --safe-top: env(safe-area-inset-top); }
+        :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --safe-top: env(safe-area-inset-top); }
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: calc(var(--safe-top) + 10px) 16px 160px 16px; }
         .card { background: #fff; border-radius: 16px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 12px; }
-        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 14px; border-radius: 12px; width: 100%; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .btn-main { background: var(--ios-blue); color: #fff; border: none; padding: 14px; border-radius: 12px; width: 100%; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-stop { background: var(--ios-red); }
         
-        .filter-input {
-            width: 100%; border: 1px solid #d1d1d6; border-radius: 10px; padding: 12px;
-            font-size: 15px; box-sizing: border-box; margin-top: 10px; background: #fff;
-        }
+        .filter-input { width: 100%; border: 1px solid #d1d1d6; border-radius: 10px; padding: 12px; font-size: 15px; box-sizing: border-box; margin-top: 10px; background: #fff; }
+        .filter-stats { background: #e5f1ff; color: var(--ios-blue); padding: 8px 12px; border-radius: 8px; margin-top: 10px; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; }
 
-        /* 筛选结果统计条 */
-        .filter-stats {
-            background: #e5f1ff; color: var(--ios-blue); padding: 8px 12px;
-            border-radius: 8px; margin-top: 10px; font-size: 13px; font-weight: 600;
-            display: flex; justify-content: space-between;
-        }
-
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 10px; min-height: 200px; position: relative; }
+        #reader-status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #666; font-size: 14px; text-align: center; width: 100%; display: none; }
         
         .list-item { padding: 12px; border-bottom: 0.5px solid #eee; display: flex; flex-direction: column; gap: 4px; }
         .list-item.scanned { background: #fafff9; border-left: 6px solid var(--ios-green); }
@@ -32,15 +25,8 @@
         .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #f0f0f2; color: #666; font-weight: 500; }
         .tag-vin { background: #333; color: #fff; font-family: monospace; }
-        .tag-qty { background: #fff3cd; color: #856404; }
 
-        #toast {
-            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.85); color: white; padding: 16px 24px;
-            border-radius: 12px; z-index: 9999; display: none; text-align: center;
-            backdrop-filter: blur(8px); width: 70%; line-height: 1.5;
-        }
-
+        #toast { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.85); color: white; padding: 16px 24px; border-radius: 12px; z-index: 9999; display: none; text-align: center; width: 70%; line-height: 1.5; }
         .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 16px 20px calc(var(--safe-bottom) + 16px); background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-top: 0.5px solid #d1d1d6; z-index: 100; }
     </style>
 </head>
@@ -51,7 +37,7 @@
 <div class="card">
     <h3>📂 1. 清单导入</h3>
     <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" style="display: none;">
-    <button class="btn-main" onclick="document.getElementById('excelInput').click()">选择清单文件</button>
+    <button class="btn-main" onclick="document.getElementById('excelInput').click()">📁 选择清单文件</button>
     <div id="statusLog" style="text-align:center; font-size:12px; color:#8e8e93; margin-top:8px;">未加载数据</div>
 </div>
 
@@ -60,8 +46,12 @@
         <h3>📷 2. 扫码核对</h3>
         <b id="statText" style="color: var(--ios-blue); font-size: 20px;">0 / 0</b>
     </div>
-    <button id="startBtn" class="btn-main" style="margin-top: 10px; display: none;">开启扫码并激活反馈</button>
-    <div id="reader"></div>
+    <div id="reader">
+        <div id="reader-status">📷 相机已关闭</div>
+    </div>
+    <div style="margin-top: 12px; display: flex; gap: 10px;">
+        <button id="cameraControlBtn" class="btn-main" style="display: none;">📷 开启相机</button>
+    </div>
 </div>
 
 <div class="card" style="padding: 10px 0;">
@@ -73,13 +63,13 @@
             <span id="filterCountDisplay">已核对 0 / 共 0 件</span>
         </div>
     </div>
-    <div id="itemList" style="margin-top: 10px; max-height: 500px; overflow-y: auto;">
+    <div id="itemList" style="margin-top: 10px; max-height: 400px; overflow-y: auto;">
         <p style="text-align: center; color: #ccc; padding: 30px;">等待上传文件...</p>
     </div>
 </div>
 
 <div class="footer">
-    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对报表</button>
+    <button class="btn-main" style="background: var(--ios-green);" onclick="exportData()">💾 导出核对结果</button>
 </div>
 
 <audio id="beepAudio" preload="auto">
@@ -90,8 +80,11 @@
     let inventory = [];
     let scanHistory = {};
     let isProcessing = false;
+    let cameraActive = false;
     const html5QrCode = new Html5Qrcode("reader");
     const beep = document.getElementById('beepAudio');
+    const cameraBtn = document.getElementById('cameraControlBtn');
+    const readerStatus = document.getElementById('reader-status');
 
     function showToast(msg, duration = 2000) {
         const t = document.getElementById('toast');
@@ -130,30 +123,30 @@
                 document.getElementById('statusLog').innerText = `✅ 已加载 ${inventory.length} 条数据`;
                 document.getElementById('filterStatsBar').style.display = 'flex';
                 renderList();
-                document.getElementById('startBtn').style.display = 'block';
+                
+                cameraBtn.style.display = 'flex'; // 显示控制按钮
             } catch (err) { alert("解析失败"); }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    document.getElementById('startBtn').addEventListener('click', function() {
-        beep.play().then(() => { beep.pause(); beep.currentTime = 0; });
-        if (navigator.vibrate) navigator.vibrate(50);
-        this.style.display = 'none';
-        startScanner();
+    // 相机开关切换逻辑
+    cameraBtn.addEventListener('click', function() {
+        if (!cameraActive) {
+            // 激活相机
+            beep.play().then(() => { beep.pause(); beep.currentTime = 0; });
+            if (navigator.vibrate) navigator.vibrate(50);
+            startScanner();
+        } else {
+            // 停止相机
+            stopScanner();
+        }
     });
 
     function renderList(filter = '') {
         const listDiv = document.getElementById('itemList');
         listDiv.innerHTML = '';
-        
-        const filtered = inventory.filter(i => 
-            i.vin.includes(filter) || 
-            i.model.toUpperCase().includes(filter) || 
-            i.partNo.toUpperCase().includes(filter)
-        );
-
-        // 更新筛选后的总数和已核对数
+        const filtered = inventory.filter(i => i.vin.includes(filter) || i.model.toUpperCase().includes(filter) || i.partNo.toUpperCase().includes(filter));
         const filteredScanned = filtered.filter(i => scanHistory[i.barcode]).length;
         document.getElementById('filterCountDisplay').innerText = `已核对 ${filteredScanned} / 共 ${filtered.length} 件`;
         document.getElementById('statText').innerText = `${Object.keys(scanHistory).length} / ${inventory.length}`;
@@ -167,7 +160,7 @@
                 <div class="tag-row">
                     <span class="tag" style="background:#e5f1ff; color:#007aff;">${item.brand}</span>
                     <span class="tag">${item.model}</span>
-                    <span class="tag tag-qty">数量:${item.qty}</span>
+                    <span class="tag">数量:${item.qty}</span>
                 </div>
                 <div class="tag-row">
                     <span class="tag tag-vin">VIN:${item.vin}</span>
@@ -179,6 +172,10 @@
     }
 
     function startScanner() {
+        readerStatus.style.display = 'none';
+        cameraBtn.innerText = "⌛ 正在启动...";
+        cameraBtn.disabled = true;
+
         html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: { width: 250, height: 150 } }, (code) => {
             if(isProcessing) return;
             const clean = code.trim();
@@ -202,10 +199,32 @@
             beep.play();
             if (navigator.vibrate) navigator.vibrate(80);
             scanHistory[clean] = new Date().toLocaleTimeString();
-            
-            // 扫描成功后刷新列表（保持当前的筛选状态）
             renderList(document.getElementById('filterInput').value.toUpperCase());
             setTimeout(() => { isProcessing = false; }, 1200);
+        }).then(() => {
+            cameraActive = true;
+            cameraBtn.innerText = "🛑 暂停扫码(关闭相机)";
+            cameraBtn.classList.add('btn-stop');
+            cameraBtn.disabled = false;
+        }).catch(err => {
+            alert("无法开启相机: " + err);
+            cameraBtn.disabled = false;
+            cameraBtn.innerText = "📷 开启相机";
+        });
+    }
+
+    function stopScanner() {
+        cameraBtn.disabled = true;
+        cameraBtn.innerText = "关闭中...";
+        html5QrCode.stop().then(() => {
+            cameraActive = false;
+            cameraBtn.innerText = "📷 开启相机";
+            cameraBtn.classList.remove('btn-stop');
+            cameraBtn.disabled = false;
+            readerStatus.style.display = 'block';
+        }).catch(err => {
+            console.error("无法停止相机", err);
+            cameraBtn.disabled = false;
         });
     }
 
@@ -218,9 +237,8 @@
         const ws = XLSX.utils.json_to_sheet(out);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "结果");
-        XLSX.writeFile(wb, `旧件报表_${new Date().getTime()}.xlsx`);
+        XLSX.writeFile(wb, `旧件核对报表_${new Date().getTime()}.xlsx`);
     }
 </script>
 </body>
 </html>
-
