@@ -3,147 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>旧件核对专业版</title>
-    <!-- 引入核心库 -->
+    <title>旧件核对系统</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-grey: #8e8e93; --ios-bg: #f2f2f7; }
-        body { font-family: -apple-system, sans-serif; background: var(--ios-bg); margin: 0; padding: 15px; }
+        body { font-family: -apple-system, sans-serif; background: var(--ios-bg); margin: 0; padding: 12px; color: #1c1c1e; }
         
-        /* 统计看板 */
-        .dashboard { 
-            background: white; border-radius: 16px; padding: 20px; 
-            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 15px;
+        /* 统计区 */
+        .header-box { 
+            background: white; border-radius: 14px; padding: 15px; 
+            display: flex; justify-content: space-around; margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
-        .stat-card { text-align: center; }
-        .stat-value { font-size: 24px; font-weight: bold; display: block; }
-        .val-total { color: var(--ios-blue); }
-        .val-done { color: var(--ios-green); }
-        .stat-label { font-size: 11px; color: var(--ios-grey); margin-top: 4px; }
+        .stat-item { text-align: center; }
+        .stat-num { font-size: 22px; font-weight: 700; display: block; }
+        .stat-label { font-size: 11px; color: var(--ios-grey); }
 
-        /* 按钮组 */
-        .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
-        .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 600; text-align: center; font-size: 14px; cursor: pointer; }
-        .btn-upload { background: var(--ios-blue); color: white; }
-        .btn-export { background: white; color: var(--ios-blue); border: 1px solid var(--ios-blue); }
+        /* 按钮 */
+        .action-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+        .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 600; font-size: 14px; }
+        .btn-main { background: var(--ios-blue); color: white; }
+        .btn-sub { background: #e5e5ea; color: #3a3a3c; }
 
-        /* 扫描区 */
-        #reader { border-radius: 16px; overflow: hidden; background: #000; margin-bottom: 15px; }
+        /* 扫码窗口 */
+        #reader { border-radius: 14px; overflow: hidden; background: #000; margin-bottom: 12px; }
 
-        /* 列表 */
-        .item-card { 
-            background: white; border-radius: 12px; padding: 12px; margin-bottom: 8px;
-            display: flex; align-items: center; transition: 0.3s;
+        /* 卡片列表 */
+        .card { 
+            background: white; border-radius: 12px; padding: 12px; margin-bottom: 10px;
+            position: relative; border-left: 5px solid #d1d1d6; transition: 0.3s;
         }
-        .item-info { flex: 1; }
-        .barcode { font-family: monospace; font-size: 13px; font-weight: 600; }
-        .parts-name { display: block; margin: 3px 0; font-size: 15px; }
-        .car-info { font-size: 12px; color: var(--ios-grey); }
+        .card.is-scanned { border-left-color: var(--ios-green); background: #fafff9; }
         
-        .status-dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 12px; }
-        .pending { color: #8e8e93; border-left: 4px solid #d1d1d6; }
-        .pending .status-dot { background: #d1d1d6; }
-        .scanned { color: var(--ios-green); border-left: 4px solid var(--ios-green); background: #fafff9; }
-        .scanned .status-dot { background: var(--ios-green); }
+        /* 字段排版 */
+        .row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px; }
+        .label { color: var(--ios-grey); min-width: 65px; }
+        .val { font-weight: 500; text-align: right; word-break: break-all; }
+        .barcode-val { font-family: monospace; color: var(--ios-blue); font-weight: bold; }
+        .qty-badge { background: #f2f2f7; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+        .is-scanned .qty-badge { background: var(--ios-green); color: white; }
     </style>
 </head>
 <body>
 
-    <div class="dashboard">
-        <div class="stat-card"><span class="stat-value val-total" id="tNum">0</span><span class="stat-label">清单数</span></div>
-        <div class="stat-card"><span class="stat-value val-done" id="dNum">0</span><span class="stat-label">已核对</span></div>
-        <div class="stat-card"><span class="stat-value" id="lNum" style="color:#ff9500">0</span><span class="stat-label">剩余数</span></div>
+    <div class="header-box">
+        <div class="stat-item"><span class="stat-num" id="tNum" style="color:var(--ios-blue)">0</span><span class="stat-label">总数</span></div>
+        <div class="stat-item"><span class="stat-num" id="dNum" style="color:var(--ios-green)">0</span><span class="stat-label">已核对</span></div>
+        <div class="stat-item"><span class="stat-num" id="lNum" style="color:#ff9500">0</span><span class="stat-label">剩余</span></div>
     </div>
 
-    <div class="btn-group">
-        <button class="btn btn-upload" onclick="document.getElementById('fileInput').click()">上传清单 (.xlsx)</button>
-        <button class="btn btn-export" onclick="exportResults()">导出核对结果</button>
+    <div class="action-bar">
+        <button class="btn btn-main" onclick="document.getElementById('xlsxInput').click()">上传清单</button>
+        <button class="btn btn-sub" onclick="exportExcel()">导出结果</button>
     </div>
-    <input type="file" id="fileInput" accept=".xlsx, .xls" style="display:none">
+    <input type="file" id="xlsxInput" accept=".xlsx" style="display:none">
 
     <div id="reader"></div>
-
-    <div id="itemList"></div>
+    <div id="list"></div>
 
     <script>
-        let rawData = [];
-        let scannedMap = new Map(); // 存储已扫描条码及扫描时间
+        let dataList = [];
+        let scannedSet = new Map();
 
-        // --- 读取 Excel ---
-        document.getElementById('fileInput').addEventListener('change', function(e) {
+        document.getElementById('xlsxInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                rawData = XLSX.utils.sheet_to_json(firstSheet);
-                updateUI();
-                startScanner();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(e.target.result, {type: 'binary'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                dataList = XLSX.utils.sheet_to_json(sheet);
+                render();
+                startScan();
             };
-            reader.readAsArrayBuffer(file);
+            reader.readAsBinaryString(file);
         });
 
-        // --- 渲染界面 ---
-        function updateUI() {
-            const listDiv = document.getElementById('itemList');
-            const done = scannedMap.size;
-            document.getElementById('tNum').innerText = rawData.length;
-            document.getElementById('dNum').innerText = done;
-            document.getElementById('lNum').innerText = rawData.length - done;
+        function render() {
+            const listDiv = document.getElementById('list');
+            document.getElementById('tNum').innerText = dataList.length;
+            document.getElementById('dNum').innerText = scannedSet.size;
+            document.getElementById('lNum').innerText = dataList.length - scannedSet.size;
 
-            listDiv.innerHTML = '';
-            rawData.forEach(item => {
+            listDiv.innerHTML = dataList.map(item => {
                 const sn = item['旧件条码'];
-                const isDone = scannedMap.has(sn);
-                const card = document.createElement('div');
-                card.className = `item-card ${isDone ? 'scanned' : 'pending'}`;
-                card.innerHTML = `
-                    <div class="status-dot"></div>
-                    <div class="item-info">
-                        <div class="barcode">${sn}</div>
-                        <b class="parts-name">${item['旧件名称'] || ''}</b>
-                        <div class="car-info">${item['车牌号'] || ''} | 数量: ${item['数量'] || 1}</div>
+                const done = scannedSet.has(sn);
+                return `
+                    <div class="card ${done ? 'is-scanned' : ''}">
+                        <div class="row">
+                            <span class="label">保修单号</span>
+                            <span class="val">${item['保修单号'] || '-'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">VIN</span>
+                            <span class="val">${item['VIN'] || '-'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">零件号</span>
+                            <span class="val">${item['旧件编号'] || '-'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">旧件条码</span>
+                            <span class="val barcode-val">${sn}</span>
+                        </div>
+                        <div class="row" style="margin-top:8px; border-top:1px dashed #eee; padding-top:8px;">
+                            <span style="font-weight:bold; color:${done? 'var(--ios-green)':'#333'}">${done ? '✓ 已核对' : '待扫描'}</span>
+                            <span class="qty-badge">数量: ${item['数量'] || 1}</span>
+                        </div>
                     </div>
                 `;
-                listDiv.appendChild(card);
-            });
+            }).join('');
         }
 
-        // --- 扫码处理 ---
-        function onScanSuccess(text) {
-            if (rawData.some(i => i['旧件条码'] === text)) {
-                if (!scannedMap.has(text)) {
-                    scannedMap.set(text, new Date().toLocaleString());
-                    updateUI();
-                    if(navigator.vibrate) navigator.vibrate(100);
+        function onScan(text) {
+            if (dataList.some(i => i['旧件条码'] === text)) {
+                if (!scannedSet.has(text)) {
+                    scannedSet.set(text, new Date().toLocaleString());
+                    render();
+                    if(navigator.vibrate) navigator.vibrate(200);
                 }
             } else {
-                alert("未匹配到条码: " + text);
+                alert("清单中无此条码：" + text);
             }
         }
 
-        function startScanner() {
-            const scanner = new Html5Qrcode("reader");
-            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
+        function startScan() {
+            const html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScan);
         }
 
-        // --- 导出结果 Excel ---
-        function exportResults() {
-            if (rawData.length === 0) return alert("请先上传清单");
-            
-            const exportData = rawData.map(item => ({
-                ...item,
-                '核对状态': scannedMap.has(item['旧件条码']) ? '已核对' : '未扫描',
-                '核对时间': scannedMap.get(item['旧件条码']) || ''
+        function exportExcel() {
+            const out = dataList.map(i => ({
+                ...i,
+                '核对状态': scannedSet.has(i['旧件条码']) ? '已核对' : '未扫描',
+                '核对时间': scannedSet.get(i['旧件条码']) || ''
             }));
-
-            const ws = XLSX.utils.json_to_sheet(exportData);
+            const ws = XLSX.utils.json_to_sheet(out);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "核对结果");
-            XLSX.writeFile(wb, `旧件核对结果_${new Date().getTime()}.xlsx`);
+            XLSX.writeFile(wb, `核对反馈_${new Date().getTime()}.xlsx`);
         }
     </script>
 </body>
