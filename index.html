@@ -7,10 +7,10 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-grey: #8e8e93; --ios-bg: #f2f2f7; }
+        :root { --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --ios-grey: #8e8e93; --ios-bg: #f2f2f7; }
         body { font-family: -apple-system, sans-serif; background: var(--ios-bg); margin: 0; padding: 12px; color: #1c1c1e; }
         
-        /* 统计区 */
+        /* 统计看板 */
         .header-box { 
             background: white; border-radius: 14px; padding: 15px; 
             display: flex; justify-content: space-around; margin-bottom: 12px;
@@ -20,52 +20,67 @@
         .stat-num { font-size: 22px; font-weight: 700; display: block; }
         .stat-label { font-size: 11px; color: var(--ios-grey); }
 
-        /* 按钮 */
+        /* 操作按钮 */
         .action-bar { display: flex; gap: 8px; margin-bottom: 12px; }
-        .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 600; font-size: 14px; }
+        .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 600; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 5px; }
         .btn-main { background: var(--ios-blue); color: white; }
-        .btn-sub { background: #e5e5ea; color: #3a3a3c; }
+        .btn-pause { background: #ff9500; color: white; }
+        .btn-resume { background: var(--ios-green); color: white; }
+        .btn-sub { background: white; color: var(--ios-blue); border: 1px solid var(--ios-blue); }
 
-        /* 扫码窗口 */
-        #reader { border-radius: 14px; overflow: hidden; background: #000; margin-bottom: 12px; }
-
-        /* 卡片列表 */
-        .card { 
-            background: white; border-radius: 12px; padding: 12px; margin-bottom: 10px;
-            position: relative; border-left: 5px solid #d1d1d6; transition: 0.3s;
-        }
-        .card.is-scanned { border-left-color: var(--ios-green); background: #fafff9; }
+        /* 扫描容器 */
+        #scanner-container { position: relative; border-radius: 14px; overflow: hidden; background: #000; margin-bottom: 12px; min-height: 200px; }
+        #reader { width: 100%; }
         
-        /* 字段排版 */
+        /* 暂停遮罩层 */
+        #pause-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.7); display: none; z-index: 10;
+            flex-direction: column; align-items: center; justify-content: center; color: white;
+        }
+
+        /* 列表展示 */
+        .card { background: white; border-radius: 12px; padding: 12px; margin-bottom: 10px; border-left: 5px solid #d1d1d6; transition: 0.3s; }
+        .card.is-scanned { border-left-color: var(--ios-green); background: #fafff9; }
         .row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px; }
         .label { color: var(--ios-grey); min-width: 65px; }
         .val { font-weight: 500; text-align: right; word-break: break-all; }
-        .barcode-val { font-family: monospace; color: var(--ios-blue); font-weight: bold; }
         .qty-badge { background: #f2f2f7; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
-        .is-scanned .qty-badge { background: var(--ios-green); color: white; }
     </style>
 </head>
 <body>
 
     <div class="header-box">
         <div class="stat-item"><span class="stat-num" id="tNum" style="color:var(--ios-blue)">0</span><span class="stat-label">总数</span></div>
-        <div class="stat-item"><span class="stat-num" id="dNum" style="color:var(--ios-green)">0</span><span class="stat-label">已核对</span></div>
+        <div class="stat-item"><span class="stat-num" id="dNum" style="color:var(--ios-green)">0</span><span class="stat-label">已核</span></div>
         <div class="stat-item"><span class="stat-num" id="lNum" style="color:#ff9500">0</span><span class="stat-label">剩余</span></div>
     </div>
 
     <div class="action-bar">
-        <button class="btn btn-main" onclick="document.getElementById('xlsxInput').click()">上传清单</button>
-        <button class="btn btn-sub" onclick="exportExcel()">导出结果</button>
+        <button class="btn btn-main" onclick="document.getElementById('xlsxInput').click()">📁 上传</button>
+        <button id="toggleBtn" class="btn btn-pause" onclick="toggleScanner()" style="display:none;">⏸ 暂停扫描</button>
+        <button class="btn btn-sub" onclick="exportExcel()">📤 导出</button>
     </div>
+    
     <input type="file" id="xlsxInput" accept=".xlsx" style="display:none">
 
-    <div id="reader"></div>
+    <div id="scanner-container">
+        <div id="reader"></div>
+        <div id="pause-overlay">
+            <span style="font-size: 40px; margin-bottom: 10px;">⏸</span>
+            <span>扫描已暂停</span>
+        </div>
+    </div>
+
     <div id="list"></div>
 
     <script>
         let dataList = [];
         let scannedSet = new Map();
+        let html5QrCode;
+        let isScanning = false;
 
+        // --- 1. 读取 Excel ---
         document.getElementById('xlsxInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             const reader = new FileReader();
@@ -74,11 +89,71 @@
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
                 dataList = XLSX.utils.sheet_to_json(sheet);
                 render();
-                startScan();
+                document.getElementById('toggleBtn').style.display = 'flex';
+                initScanner();
             };
             reader.readAsBinaryString(file);
         });
 
+        // --- 2. 扫码核心控制 ---
+        function initScanner() {
+            html5QrCode = new Html5Qrcode("reader");
+            startScanner();
+        }
+
+        function startScanner() {
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: 250 },
+                onScanSuccess
+            ).then(() => {
+                isScanning = true;
+                updateToggleBtn(true);
+            });
+        }
+
+        function toggleScanner() {
+            if (!html5QrCode) return;
+
+            if (isScanning) {
+                // 暂停：停止视频流
+                html5QrCode.stop().then(() => {
+                    isScanning = false;
+                    document.getElementById('pause-overlay').style.display = 'flex';
+                    updateToggleBtn(false);
+                });
+            } else {
+                // 恢复：重新启动视频流
+                document.getElementById('pause-overlay').style.display = 'none';
+                startScanner();
+            }
+        }
+
+        function updateToggleBtn(running) {
+            const btn = document.getElementById('toggleBtn');
+            if (running) {
+                btn.className = "btn btn-pause";
+                btn.innerHTML = "⏸ 暂停扫描";
+            } else {
+                btn.className = "btn btn-resume";
+                btn.innerHTML = "▶️ 恢复扫描";
+            }
+        }
+
+        function onScanSuccess(text) {
+            if (dataList.some(i => i['旧件条码'] === text)) {
+                if (!scannedSet.has(text)) {
+                    scannedSet.set(text, new Date().toLocaleString());
+                    render();
+                    if(navigator.vibrate) navigator.vibrate(200);
+                }
+            } else {
+                // 提示后点击确定才继续，防止重复报错
+                alert("⚠ 清单无此条码：" + text);
+            }
+        }
+
+        // --- 3. 界面与导出 ---
         function render() {
             const listDiv = document.getElementById('list');
             document.getElementById('tNum').innerText = dataList.length;
@@ -90,46 +165,17 @@
                 const done = scannedSet.has(sn);
                 return `
                     <div class="card ${done ? 'is-scanned' : ''}">
-                        <div class="row">
-                            <span class="label">保修单号</span>
-                            <span class="val">${item['保修单号'] || '-'}</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">VIN</span>
-                            <span class="val">${item['VIN'] || '-'}</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">零件号</span>
-                            <span class="val">${item['旧件编号'] || '-'}</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">旧件条码</span>
-                            <span class="val barcode-val">${sn}</span>
-                        </div>
+                        <div class="row"><span class="label">保修单号</span><span class="val">${item['保修单号'] || '-'}</span></div>
+                        <div class="row"><span class="label">VIN</span><span class="val">${item['VIN'] || '-'}</span></div>
+                        <div class="row"><span class="label">零件号</span><span class="val">${item['旧件编号'] || '-'}</span></div>
+                        <div class="row"><span class="label">旧件条码</span><span class="val" style="font-family:monospace; color:var(--ios-blue)">${sn}</span></div>
                         <div class="row" style="margin-top:8px; border-top:1px dashed #eee; padding-top:8px;">
-                            <span style="font-weight:bold; color:${done? 'var(--ios-green)':'#333'}">${done ? '✓ 已核对' : '待扫描'}</span>
+                            <span style="font-weight:bold;">${done ? '✅ 已核对' : '⏳ 待扫描'}</span>
                             <span class="qty-badge">数量: ${item['数量'] || 1}</span>
                         </div>
                     </div>
                 `;
             }).join('');
-        }
-
-        function onScan(text) {
-            if (dataList.some(i => i['旧件条码'] === text)) {
-                if (!scannedSet.has(text)) {
-                    scannedSet.set(text, new Date().toLocaleString());
-                    render();
-                    if(navigator.vibrate) navigator.vibrate(200);
-                }
-            } else {
-                alert("清单中无此条码：" + text);
-            }
-        }
-
-        function startScan() {
-            const html5QrCode = new Html5Qrcode("reader");
-            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScan);
         }
 
         function exportExcel() {
@@ -140,8 +186,8 @@
             }));
             const ws = XLSX.utils.json_to_sheet(out);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "核对结果");
-            XLSX.writeFile(wb, `核对反馈_${new Date().getTime()}.xlsx`);
+            XLSX.utils.book_append_sheet(wb, ws, "结果");
+            XLSX.writeFile(wb, `核对结果_${new Date().toLocaleDateString()}.xlsx`);
         }
     </script>
 </body>
